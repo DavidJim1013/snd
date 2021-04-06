@@ -41,25 +41,29 @@ class L4State14(app_manager.RyuApp):
         eth = pkt.get_protocols(ethernet.ethernet)[0]
         #
         # write your code here
-        if eth.ethertype == ETH_TYPE_IP:
-            iph = pkt.get_protocols(ipv4.ipv4)
-            tcph = pkt.get_protocols(tcp.tcp)
+        out_port = 2 if in_port == 1 else 1
+        tcph = pkt.get_protocols(tcp.tcp)
+        print(f'Tcph: {tcph}')
+        if eth.ethertype == ETH_TYPE_IP and len(tcph) > 0:
+            iph = pkt.get_protocols(ipv4.ipv4)[0]
             dst, src = (eth.dst, eth.src)
-            self.logger.info(f'Packet_in_handler: The packet_id {did} is sent from IP: {iph.src} MAC: {src} to IP: {iph.dst} MAC: {dst}. ')
+            acts = [psr.OFPActionOutput(out_port)]
+            self.logger.info(f'Packet_in_handler: The packet_id {did} is sent from IP: {iph.src} MAC: {src} to IP: {iph.dst} MAC: {dst}.')
+            print(f'Packet_in_handler: The packet_id {did} is sent from IP: {iph.src} MAC: {src} to IP: {iph.dst} MAC: {dst}.')
             if in_port == 1:
-                acts = [psr.OFPActionOutput(2)]
                 match = psr.OFPMatch(in_port=in_port, eth_src=src, eth_dst=dst)
                 self.add_flow(dp, 1, match, acts)
                 self.ht.add((iph.src, iph.dst, 1, 2))
             else:
                 if in_port == 2:
-                    acts = [psr.OFPActionOutput(1)]
                     match = psr.OFPMatch(in_port=in_port, eth_src=src, eth_dst=dst)
                     self.add_flow(dp, 1, match, acts)
                     self.ht.add((iph.src, iph.dst, 2, 1))
-                    acts = None
+                    acts = [psr.OFPActionOutput(ofp.OFPPC_NO_FWD)]
         else:
             self.logger.info('This is not a TCP packet.')
+            print('This is not a TCP packet.')
+            acts = [psr.OFPActionOutput(out_port)]
         #
         data = msg.data if msg.buffer_id == ofp.OFP_NO_BUFFER else None
         out = psr.OFPPacketOut(datapath=dp, buffer_id=msg.buffer_id,
