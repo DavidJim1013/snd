@@ -43,23 +43,31 @@ class L4State14(app_manager.RyuApp):
         # write your code here
         out_port = 2 if in_port == 1 else 1
         tcph = pkt.get_protocols(tcp.tcp)
-        print(f'Tcph: {tcph}')
         if eth.ethertype == ETH_TYPE_IP and len(tcph) > 0:
             iph = pkt.get_protocols(ipv4.ipv4)[0]
             dst, src = (eth.dst, eth.src)
-            acts = [psr.OFPActionOutput(out_port)]
             self.logger.info(f'Packet_in_handler: The packet_id {did} is sent from IP: {iph.src} MAC: {src} to IP: {iph.dst} MAC: {dst}.')
-            print(f'Packet_in_handler: The packet_id {did} is sent from IP: {iph.src} MAC: {src} to IP: {iph.dst} MAC: {dst}.')
+            print(f'Packet_in_handler: The packet_id {did} is sent from IP: {iph.src}:{in_port} MAC: {src} to IP: {iph.dst}:{out_port} MAC: {dst}.')
             if in_port == 1:
-                match = psr.OFPMatch(in_port=in_port, eth_src=src, eth_dst=dst)
+                acts = [psr.OFPActionOutput(out_port)]
+                match = psr.OFPMatch(in_port=in_port, eth_src=src, eth_dst=dst, ipv4_src=iph.src, ipv4_dst=iph.dst,
+                                     tcp_src=tcph[0].src_port, tcp_dst=tcph[0].dst_port)
                 self.add_flow(dp, 1, match, acts)
-                self.ht.add((iph.src, iph.dst, 1, 2))
+                self.ht.add((iph.src, iph.dst, in_port, out_port))
+                return
             else:
                 if in_port == 2:
-                    match = psr.OFPMatch(in_port=in_port, eth_src=src, eth_dst=dst)
-                    self.add_flow(dp, 1, match, acts)
-                    self.ht.add((iph.src, iph.dst, 2, 1))
-                    acts = [psr.OFPActionOutput(ofp.OFPPC_NO_FWD)]
+                    if (iph.dst, iph.src, out_port, in_port) not in self.ht:
+                        acts = [psr.OFPActionOutput(ofp.OFPPC_NO_FWD)]
+                        self.ht.add((iph.src, iph.dst, in_port, out_port))
+                    else:
+                        acts = [psr.OFPActionOutput(out_port)]
+                        match = psr.OFPMatch(in_port=in_port, eth_src=src, eth_dst=dst, ipv4_src=iph.src,
+                                             ipv4_dst=iph.dst,
+                                             tcp_src=tcph[0].src_port, tcp_dst=tcph[0].dst_port)
+                        self.add_flow(dp, 1, match, acts)
+                        print(22)
+                        return
         else:
             self.logger.info('This is not a TCP packet.')
             print('This is not a TCP packet.')
