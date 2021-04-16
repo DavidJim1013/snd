@@ -73,8 +73,9 @@ class L4State14(app_manager.RyuApp):
             print('This is not a TCP packet.')
             acts = [psr.OFPActionOutput(out_port)]
         #
+        if msg.buffer_id != ofp.OFP_NO_BUFFER:
+                return
         data = msg.data if msg.buffer_id == ofp.OFP_NO_BUFFER else None
-        if msg.buffer_id != ofp.OFP_NO_BUFFER:return
         out = psr.OFPPacketOut(datapath=dp, buffer_id=msg.buffer_id,
                                in_port=in_port, actions=acts, data=data)
         dp.send_msg(out)
