@@ -43,6 +43,7 @@ class L4State14(app_manager.RyuApp):
         # write your code here
         out_port = 2 if in_port == 1 else 1
         tcph = pkt.get_protocols(tcp.tcp)
+        flow = False
         if eth.ethertype == ETH_TYPE_IP and len(tcph) > 0:
             iph = pkt.get_protocols(ipv4.ipv4)[0]
             dst, src = (eth.dst, eth.src)
@@ -50,32 +51,27 @@ class L4State14(app_manager.RyuApp):
             print(f'Packet_in_handler: The packet_id {did} is sent from IP: {iph.src}:{in_port} MAC: {src} to IP: {iph.dst}:{out_port} MAC: {dst}.')
             if in_port == 1:
                 acts = [psr.OFPActionOutput(out_port)]
-                match = psr.OFPMatch(in_port=in_port, eth_src=src, eth_dst=dst, ipv4_src=iph.src, ipv4_dst=iph.dst,
-                                     tcp_src=tcph[0].src_port, tcp_dst=tcph[0].dst_port)
-                self.add_flow(dp, 1, match, acts)
-                self.ht.add((iph.src, iph.dst, in_port, out_port))
-                return
-            else:
-                if in_port == 2:
-                    if (iph.dst, iph.src, out_port, in_port) not in self.ht:
-                        acts = [psr.OFPActionOutput(ofp.OFPPC_NO_FWD)]
-                        self.ht.add((iph.src, iph.dst, in_port, out_port))
-                    else:
-                        acts = [psr.OFPActionOutput(out_port)]
-                        match = psr.OFPMatch(in_port=in_port, eth_src=src, eth_dst=dst, ipv4_src=iph.src,
-                                             ipv4_dst=iph.dst,
-                                             tcp_src=tcph[0].src_port, tcp_dst=tcph[0].dst_port)
-                        self.add_flow(dp, 1, match, acts)
-                        print(22)
-                        return
+                if (iph.src, iph.dst, in_port, out_port) not in self.ht:
+                    self.ht.add((iph.src, iph.dst, in_port, out_port))
+                    flow = True
+            if in_port == 2:
+                if (iph.dst, iph.src, out_port, in_port) in self.ht:
+                    acts = [psr.OFPActionOutput(out_port)]
+                    # self.ht.add((iph.src, iph.dst, in_port, out_port))
+                    flow = True
+                else:
+                    acts = [psr.OFPActionOutput(ofp.OFPPC_NO_FWD)]
         else:
             self.logger.info('This is not a TCP packet.')
-            print('This is not a TCP packet.')
             acts = [psr.OFPActionOutput(out_port)]
         #
-        if msg.buffer_id != ofp.OFP_NO_BUFFER:
-                return
         data = msg.data if msg.buffer_id == ofp.OFP_NO_BUFFER else None
         out = psr.OFPPacketOut(datapath=dp, buffer_id=msg.buffer_id,
                                in_port=in_port, actions=acts, data=data)
         dp.send_msg(out)
+        if flow:
+            acts = [psr.OFPActionOutput(out_port)]
+            match = psr.OFPMatch(in_port=in_port, eth_src=src, eth_dst=dst, ipv4_src=iph.src,
+                                 ipv4_dst=iph.dst,
+                                 tcp_src=tcph[0].src_port, tcp_dst=tcph[0].dst_port)
+            self.add_flow(dp, 1, match, acts)

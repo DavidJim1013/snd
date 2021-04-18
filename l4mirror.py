@@ -45,6 +45,7 @@ class L4Mirror14(app_manager.RyuApp):
         out_port = 2 if in_port == 1 else 1
         #
         # write your code here
+        flow = False
         if eth.ethertype == ETH_TYPE_IP and len(tcph) > 0:
             if tcph[0].bits == 2 and in_port == 2:
                 self.ht.setdefault((iph[0].src, iph[0].dst, tcph[0].src_port, tcph[0].dst_port), 0)
@@ -57,21 +58,14 @@ class L4Mirror14(app_manager.RyuApp):
                 self.logger.info(f'Packet_in_handler: The packet_id {did} is sent from IP: {iph[0].src} MAC: {src} to IP: {iph[0].dst} MAC: {dst}.')
                 if not (iph[0].src, iph[0].dst, tcph[0].src_port, tcph[0].dst_port) in self.ht:
                     acts = [psr.OFPActionOutput(out_port)]
-                    match = psr.OFPMatch(in_port=in_port, eth_src=src, eth_dst=dst, ipv4_src=iph[0].src,
-                                         ipv4_dst=iph[0].dst,
-                                         tcp_src=tcph[0].src_port, tcp_dst=tcph[0].dst_port)
-                    self.add_flow(dp, 1, match, acts)
-                    return
+                    flow = True
                 else:
                     if in_port == 1:
                         acts = [psr.OFPActionOutput(out_port)]
-                        match = psr.OFPMatch(in_port=in_port, eth_src=src, eth_dst=dst, ipv4_src=iph[0].src, ipv4_dst=iph[0].dst,
-                                             tcp_src=tcph[0].src_port, tcp_dst=tcph[0].dst_port)
-                        self.add_flow(dp, 1, match, acts)
                         self.ht.setdefault((iph[0].src, iph[0].dst, tcph[0].src_port, tcph[0].dst_port), 0)
                         count = self.ht.get((iph[0].src, iph[0].dst, tcph[0].src_port, tcph[0].dst_port))
                         self.ht[(iph[0].src, iph[0].dst, tcph[0].src_port, tcph[0].dst_port)] = count + 1
-                        return
+                        flow = True
                     else:
                         if in_port == 2:
                             if (iph[0].dst, iph[0].src, tcph[0].dst_port, tcph[0].src_port) in self.ht:
@@ -96,3 +90,8 @@ class L4Mirror14(app_manager.RyuApp):
         out = psr.OFPPacketOut(datapath=dp, buffer_id=msg.buffer_id,
                                in_port=in_port, actions=acts, data=data)
         dp.send_msg(out)
+        if flow:
+            match = psr.OFPMatch(in_port=in_port, eth_src=src, eth_dst=dst, ipv4_src=iph[0].src,
+                                 ipv4_dst=iph[0].dst,
+                                 tcp_src=tcph[0].src_port, tcp_dst=tcph[0].dst_port)
+            self.add_flow(dp, 1, match, acts)
